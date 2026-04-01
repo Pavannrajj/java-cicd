@@ -1,0 +1,112 @@
+pipeline {
+    agent any
+    tools {
+        maven 'maven'
+    }
+    environment {
+        NEXUS_URL      = 'http://43.205.114.147:8081'
+        NEXUS_REPO     = 'java-app'
+        GROUP_ID       = 'com.example'
+        ARTIFACT_ID    = 'java-frontend-app'
+        VERSION        = '1.0.0'
+        TOMCAT_HOST    = 'ubuntu@15.207.111.167'
+        TOMCAT_WEBAPPS = '/opt/tomcat/webapps/'
+    }
+    stages {
+        stage('Checkout') {
+            steps {
+                git branch: 'main',
+                    credentialsId: 'git_id',
+                    url: 'https://github.com/vtricksshiva/java-cicd.git'
+            }
+        }
+
+        stage('SonarQube Scan') {
+            steps {
+                withSonarQubeEnv('sonarqube') {
+                    sh '''
+                        mvn clean verify sonar:sonar \
+                            -Dsonar.projectKey=sample \
+                            -Dsonar.projectName=sample
+                    '''
+                }
+            }
+        }
+
+        stage('Build') {
+            steps {
+                sh '''
+                    mvn package -DskipTests
+                    echo "Listing target directory:"
+                    ls -lh target/
+                    ls target/*.war
+                '''
+            }
+        }
+
+        stage('Publish WAR to Nexus') {
+            steps {
+                withCredentials([usernamePassword(
+                    credentialsId: 'nexus_server',
+                    usernameVariable: 'NEXUS_USER',
+                    passwordVariable: 'NEXUS_PASS'
+                )]) {
+                    sh '''
+                        WAR_FILE=$(ls target/*.war | head -n 1)
+                        test -n "$WAR_FILE" || { echo "WAR file not found"; exit 1; }
+                        echo "Uploading WAR: $WAR_FILE to Nexus..."
+
+                        curl -v --fail \
+                            -u "$NEXUS_USER:$NEXUS_PASS" \
+                            -H "Content-Type: application/octet-stream" \
+                            --upload-file "$WAR_FILE" \
+                            "${NEXUS_URL}/repository/${NEXUS_REPO}/com/example/${ARTIFACT_ID}/${VERSION}/${ARTIFACT_ID}-${VERSION}.war"
+
+                        echo "WAR uploaded successfully to Nexus."
+                    '''
+                }
+            }
+        }
+
+        stage('Deploy to Tomcat via SSH') {
+            steps {
+                sshagent(['ssh-key-jenkins']) {
+                    sh '''
+                        WAR_FILE=$(ls target/*.war | head -n 1)
+                        test -n "$WAR_FILE" || { echo "WAR file not found"; exit 1; }
+                        echo "Deploying WAR: $WAR_FILE to Tomcat..."
+
+                        scp -o StrictHostKeyChecking=no "$WAR_FILE" \
+                            ${TOMCAT_HOST}:${TOMCAT_WEBAPPS}
+
+                        ssh -o StrictHostKeyChecking=no ${TOMCAT_HOST} '
+                            if sudo systemctl restart tomcat 2>/dev/null; then
+                                echo "Tomcat restarted via systemctl"
+                            elif sudo systemctl restart tomcat9 2>/dev/null; then
+                                echo "Tomcat9 restarted via systemctl"
+                            elif sudo systemctl restart tomcat10 2>/dev/null; then
+                                echo "Tomcat10 restarted via systemctl"
+                            else
+                                echo "Falling back to startup/shutdown scripts..."
+                                sudo /opt/tomcat/bin/shutdown.sh || true
+                                sleep 5
+                                sudo /opt/tomcat/bin/startup.sh
+                                echo "Tomcat restarted via scripts"
+                            fi
+                        '
+                        echo "Deployment complete."
+                    '''
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo 'Pipeline executed successfully. WAR deployed to Tomcat.'
+        }
+        failure {
+            echo 'Pipeline failed. Please check the stage logs above.'
+        }
+    }
+}
