@@ -72,7 +72,7 @@ pipeline {
                 
                 docker push ${ECR_REPO}:${BUILD_NUMBER}
                 docker push ${ECR_REPO}:latest
-                """
+                """ 
             } 
             }
         }
