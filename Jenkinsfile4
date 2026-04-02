@@ -40,7 +40,7 @@ pipeline {
         stage('Push Binaries to Nexus') {
             steps {
                 script {
-                    withCredentials([usernamePassword(credentialsId: 'nexus_server', passwordVariable: 'pass', usernameVariable: 'user')]) {
+                    withCredentials([usernamePassword(credentialsId: 'nexus-id', passwordVariable: 'pass', usernameVariable: 'user')]) {
                         sh """
                         curl -u ${user}:${pass} -T java-frontend-app.war \
                         "http://13.203.75.123:8081/repository/frontend-app/java-frontend-app-${BUILD_NUMBER}.war"
