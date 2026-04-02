@@ -21,9 +21,11 @@ pipeline {
         stage('Sonar Scan') {
             steps {
                 script {
+                    
                     withSonarQubeEnv('sonarqube') {
+                         withCredentials([string(credentialsId: 'sonar-id', variable: 'SONAR_TOKEN')]){
                         sh "mvn clean verify sonar:sonar -Dsonar.projectKey=sonar-scan-with-jenkins -Dsonar.projectName='sonar-scan-with-jenkins'"
-                    }
+                    }}
                 }
             }
         }
