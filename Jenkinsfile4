@@ -79,7 +79,7 @@ pipeline {
 
     }
 
-    post {
+    post { 
         success {
             echo "Pipeline completed — Docker image pushed to ECR: ${ECR_REPO}:${BUILD_NUMBER}"
         }
